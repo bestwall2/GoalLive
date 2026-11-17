@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Image, RefreshControl, SafeAreaView, ScrollView,
+  ActivityIndicator, AppState, Image, RefreshControl, SafeAreaView, ScrollView,
   StatusBar, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,11 +8,28 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 const API = 'https://worldcup26.ir/get/soccer';
 const C = { bg:'#080D18', panel:'#111A2A', panel2:'#172337', line:'#243149', text:'#F4F7FC', muted:'#8D9BB2', green:'#21D18B', red:'#FF5364', blue:'#4B8DFF', yellow:'#FFC857' };
 
-async function apiGet(path) {
-  const response = await fetch(API + path, { headers: { Accept: 'application/json' } });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `Football API error (${response.status})`);
-  return body;
+const responseCache = new Map();
+const pendingRequests = new Map();
+async function apiGet(path, { force = false, ttl = 20000 } = {}) {
+  const cached = responseCache.get(path);
+  if (!force && cached && Date.now() - cached.time < ttl) return cached.data;
+  if (!force && pendingRequests.has(path)) return pendingRequests.get(path);
+  const request = (async () => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = controller ? setTimeout(() => controller.abort(), 12000) : null;
+    try {
+      const response = await fetch(API + path, { headers: { Accept: 'application/json' }, signal: controller?.signal });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Football API error (${response.status})`);
+      responseCache.set(path, { data: body, time: Date.now() });
+      return body;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      pendingRequests.delete(path);
+    }
+  })();
+  pendingRequests.set(path, request);
+  return request;
 }
 const safe = value => value == null || value === '' ? '—' : String(value);
 const teamOf = competitor => competitor?.team || {};
@@ -123,10 +140,14 @@ function Standings({ leagues, league, onLeague, standings, loading, error, refre
   </ScrollView>;
 }
 function Leagues({ leagues, onSelect }) {
-  return <ScrollView contentContainerStyle={s.page}><Header subtitle="AVAILABLE COMPETITIONS"/>{leagues.map(l=><TouchableOpacity key={l.slug} onPress={()=>onSelect(l)} style={s.leagueCard}>
+  const [kind, setKind] = useState('all');
+  const visible = leagues.filter(l => kind === 'all' || (kind === 'international' ? l.kind === 'international' : l.kind !== 'international'));
+  return <ScrollView contentContainerStyle={s.page}><Header subtitle="CLUB & INTERNATIONAL FOOTBALL"/>
+    <View style={s.filterRow}>{[['all','All'],['club','Club'],['international','National teams']].map(([id,label])=><TouchableOpacity key={id} onPress={()=>setKind(id)} style={[s.filterChip,kind===id&&s.filterActive]}><Text style={[s.filterText,kind===id&&{color:C.text}]}>{label}</Text></TouchableOpacity>)}</View>
+    {visible.map(l=><TouchableOpacity key={l.slug} onPress={()=>onSelect(l)} style={s.leagueCard}>
     {l.logo ? <Image source={{uri:l.logo}} style={s.leagueLogo}/> : <View style={s.leagueLogoFallback}><MaterialCommunityIcons name="trophy-outline" color={C.green} size={22}/></View>}
     <View style={{flex:1}}><Text style={s.leagueName}>{l.name}</Text><Text style={s.footerText}>{l.country || 'International'} · {l.coverage?.matches || 0} matches · {l.coverage?.clubs || 0} clubs</Text></View><Ionicons name="chevron-forward" color={C.muted} size={18}/>
-  </TouchableOpacity>)}</ScrollView>;
+  </TouchableOpacity>)}{!visible.length && <Text style={s.muted}>No competitions in this category have stored data yet.</Text>}</ScrollView>;
 }
 function MatchDetail({ match, onBack }) {
   const [summary,setSummary]=useState(null), [plays,setPlays]=useState([]), [loading,setLoading]=useState(true), [error,setError]=useState(null);
@@ -170,29 +191,15 @@ export default function App() {
   const [tab,setTab]=useState('Home'), [leagues,setLeagues]=useState([]), [league,setLeague]=useState(null);
   const [matches,setMatches]=useState([]), [standings,setStandings]=useState([]);
   const [selected,setSelected]=useState(null), [loading,setLoading]=useState(true), [error,setError]=useState(null);
-  // Temporary runtime connectivity diagnostic: visible in the Metro/Expo logs.
-  useEffect(() => {
-    let active = true;
-    fetch(API + '/meta', { headers: { Accept: 'application/json' } })
-      .then(async response => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || `API health check failed (${response.status})`);
-        if (active) console.log('GOALLIVE API TEST: SUCCESS', data);
-      })
-      .catch(error => {
-        if (active) console.log('GOALLIVE API ERROR:', error?.message || String(error));
-      });
-    return () => { active = false; };
-  }, []);
   const loadLeagues = useCallback(async () => {
-    const data=await apiGet('/leagues?kind=club&available=true');
+    const data=await apiGet('/leagues?kind=all&available=true', { ttl: 60000 });
     const list=data.leagues || []; setLeagues(list);
     setLeague(current => current && list.some(x=>x.slug===current.slug) ? current : (list.find(x=>x.slug==='eng.1') || list[0] || null));
     return list;
   }, []);
   const loadMatches = useCallback(async (chosen) => {
     if (!chosen?.slug) { setMatches([]); return; }
-    const data=await apiGet('/'+encodeURIComponent(chosen.slug)+'/fixtures?status=all&page=1&limit=200');
+    const data=await apiGet('/'+encodeURIComponent(chosen.slug)+'/fixtures?status=all&page=1&limit=60', { ttl: 20000 });
     setMatches((data.events || []).map(event=>eventToMatch(event,chosen)).sort((a,b)=>new Date(a.date)-new Date(b.date)));
   }, []);
   const loadStandings = useCallback(async (chosen) => {
@@ -210,9 +217,9 @@ export default function App() {
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   }, [leagues, league, tab, loadLeagues, loadMatches, loadStandings]);
-  useEffect(()=>{ (async()=>{try{const list=await loadLeagues(); const chosen=list.find(x=>x.slug==='eng.1')||list[0]; if(chosen) await loadMatches(chosen); else setError('No competitions with stored data are currently available.');}catch(e){setError(e.message);}finally{setLoading(false);}})(); },[loadLeagues,loadMatches]);
+  useEffect(()=>{ (async()=>{try{const list=await loadLeagues(); if(!list.length) setError('No competitions with stored data are currently available.');}catch(e){setError(e.message);}finally{setLoading(false);}})(); },[loadLeagues]);
   useEffect(()=>{if(!league)return; let active=true; setLoading(true); setError(null); const run=async()=>{try{if(tab==='Tables')await loadStandings(league);else if(tab==='Home'||tab==='Fixtures')await loadMatches(league);}catch(e){if(active)setError(e.message);}finally{if(active)setLoading(false);}}; run(); return ()=>{active=false;};},[league,tab,loadMatches,loadStandings]);
-  useEffect(()=>{if(tab!=='Home'&&tab!=='Fixtures')return; const timer=setInterval(()=>{if(!selected)loadMatches(league).catch(()=>{});},15000);return()=>clearInterval(timer);},[tab,league,selected,loadMatches]);
+  useEffect(()=>{if((tab!=='Home'&&tab!=='Fixtures')||!league)return; const timer=setInterval(()=>{if(AppState.currentState==='active'&&!selected)loadMatches(league).catch(()=>{});},60000);return()=>clearInterval(timer);},[tab,league,selected,loadMatches]);
   const content=useMemo(()=>{
     if(selected)return <MatchDetail match={selected} onBack={()=>setSelected(null)}/>;
     if(tab==='Fixtures')return <Fixtures leagues={leagues} league={league} onLeague={setLeague} matches={matches} loading={loading} error={error} refresh={refresh} onMatch={setSelected}/>;
