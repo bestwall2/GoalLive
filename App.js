@@ -197,9 +197,9 @@ export default function App() {
     setLeague(current => current && list.some(x=>x.slug===current.slug) ? current : (list.find(x=>x.slug==='eng.1') || list[0] || null));
     return list;
   }, []);
-  const loadMatches = useCallback(async (chosen) => {
+  const loadMatches = useCallback(async (chosen, force = false) => {
     if (!chosen?.slug) { setMatches([]); return; }
-    const data=await apiGet('/'+encodeURIComponent(chosen.slug)+'/fixtures?status=all&page=1&limit=60', { ttl: 20000 });
+    const data=await apiGet('/'+encodeURIComponent(chosen.slug)+'/fixtures?status=all&page=1&limit=60', { ttl: 20000, force });
     setMatches((data.events || []).map(event=>eventToMatch(event,chosen)).sort((a,b)=>new Date(a.date)-new Date(b.date)));
   }, []);
   const loadStandings = useCallback(async (chosen) => {
@@ -213,7 +213,7 @@ export default function App() {
       const list=leagues.length ? leagues : await loadLeagues();
       const chosen=league || list.find(x=>x.slug==='eng.1') || list[0];
       if (tab==='Tables') await loadStandings(chosen);
-      else await loadMatches(chosen);
+      else await loadMatches(chosen, true);
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   }, [leagues, league, tab, loadLeagues, loadMatches, loadStandings]);
