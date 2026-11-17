@@ -170,6 +170,20 @@ export default function App() {
   const [tab,setTab]=useState('Home'), [leagues,setLeagues]=useState([]), [league,setLeague]=useState(null);
   const [matches,setMatches]=useState([]), [standings,setStandings]=useState([]);
   const [selected,setSelected]=useState(null), [loading,setLoading]=useState(true), [error,setError]=useState(null);
+  // Temporary runtime connectivity diagnostic: visible in the Metro/Expo logs.
+  useEffect(() => {
+    let active = true;
+    fetch(API + '/meta', { headers: { Accept: 'application/json' } })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `API health check failed (${response.status})`);
+        if (active) console.log('GOALLIVE API TEST: SUCCESS', data);
+      })
+      .catch(error => {
+        if (active) console.log('GOALLIVE API ERROR:', error?.message || String(error));
+      });
+    return () => { active = false; };
+  }, []);
   const loadLeagues = useCallback(async () => {
     const data=await apiGet('/leagues?kind=club&available=true');
     const list=data.leagues || []; setLeagues(list);
