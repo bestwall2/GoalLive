@@ -1,6 +1,6 @@
 # GoalLive — Expo React Native starter
 
-A dark, lightweight football companion app for Android and iOS, built with JavaScript and Expo.
+A dark, lightweight football companion app for Android and iOS, built with JavaScript and Expo SDK 58.
 
 ## Included
 - Home dashboard with league filters and match cards
@@ -10,11 +10,19 @@ A dark, lightweight football companion app for Android and iOS, built with JavaS
 - Match-centre detail view
 - Responsive dark UI and bottom navigation
 
+## Requirements
+- Node.js 22.13.0 or newer
+- Expo Go for SDK 58, or an SDK 58 development build
+
 ## Run
-1. Install Node.js (LTS).
-2. In this folder run `npm install`.
-3. Run `npx expo start`.
-4. Scan the QR code with Expo Go, or use an Android/iOS simulator.
+1. Clone this repository.
+2. Install dependencies: `npm install`.
+3. Align Expo package versions if needed: `npx expo install --fix`.
+4. Start the development server: `npx expo start`.
+5. Scan the QR code with the SDK 58 version of Expo Go.
+
+## SDK compatibility
+This project targets Expo SDK 58, React 19.3.0 and React Native 0.88.0. It was upgraded to match the Expo Go SDK 58 shown in the compatibility error. If you still see a version mismatch, remove the local `node_modules` and `.expo` folders, run `npm install`, then start Expo again.
 
 ## Important data note
 The app currently uses clearly labelled sample data. It does **not** yet provide real live scores, verified fixtures, news, video streams, or match events. Connect a licensed football-data provider and your own backend before production. Do not embed unauthorised broadcast streams.
