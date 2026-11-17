@@ -5,15 +5,18 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "splash": { "backgroundColor": "#080D18" },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.example.goallive"
     },
     "android": {
       "package": "com.example.goallive",
-      "adaptiveIcon": { "backgroundColor": "#080D18" }
+      "adaptiveIcon": {
+        "backgroundColor": "#080D18"
+      }
     },
-    "experiments": { "typedRoutes": false }
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }
